@@ -66,7 +66,16 @@ bool CUDAMiner::initDevice()
     try
     {
         CU_SAFE_CALL(cuDeviceGet(&m_device, m_deviceDescriptor.cuDeviceIndex));
-        CU_SAFE_CALL(cuDevicePrimaryCtxRelease(m_device));
+
+        try
+        {
+                CU_SAFE_CALL(cuDevicePrimaryCtxRelease(m_device));
+        }
+        catch(const cuda_runtime_error& ec)
+        {
+            cudalog << "Releasing a primary context that has not been previously retained will fail with CUDA_ERROR_INVALID_CONTEXT, this is normal";
+//            cudalog << " Error : " << ec.what();
+        }
         CU_SAFE_CALL(cuDevicePrimaryCtxSetFlags(m_device, m_settings.schedule));
         CU_SAFE_CALL(cuDevicePrimaryCtxRetain(&m_context, m_device));
         CU_SAFE_CALL(cuCtxSetCurrent(m_context));
@@ -476,6 +485,8 @@ void CUDAMiner::search(
     hash64_t* dag;
     get_constants(&dag, NULL, NULL, NULL);
 
+    auto search_start = std::chrono::steady_clock::now();
+
     // prime each stream, clear search result buffers and start the search
     uint32_t current_index;
     for (current_index = 0; current_index < m_settings.streams;
@@ -574,8 +585,10 @@ void CUDAMiner::search(
                     Farm::f().submitProof(Solution{
                         nonce, mixHashes[i], w, std::chrono::steady_clock::now(), m_index});
 
+                    double d = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - search_start).count(); 
+                    
                     cudalog << EthWhite << "Job: " << w.header.abridged() << " Sol: 0x"
-                            << toHex(nonce) << EthReset;
+                            << toHex(nonce) << EthLime " found in " << dev::getFormattedElapsed(d) << EthReset;
                 }
             }
         }
